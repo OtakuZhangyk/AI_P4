@@ -4,12 +4,13 @@ import numpy as np
 import random
 import time
 import pickle
+import datetime
 
 # world: 40*40
 # limit: step limit, or rewards all taken
 
 class QLearner:
-    def __init__(self, n, m, alpha=0.5, gamma=0.95, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.95):
+    def __init__(self, n, m, alpha=0.5, gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.95):
         self.actions = ['N', 'S', 'E', 'W']
         self.q_table = np.zeros((n, m, len(self.actions)))
         self.alpha = alpha
@@ -22,11 +23,18 @@ class QLearner:
 
     # P(choose randomly) = self.epsilon, else choose based on q table
     def choose_action(self, state):
+        # get the current date and time
+        now = datetime.datetime.now()
+
+        # format the date and time into a string
+        date_string = now.strftime("%m-%d-%H-%M-%S")
+
+        print(f'[{date_string}]', end = '')
         if random.uniform(0, 1) < self.epsilon:
-            print(' R ', end = '')
+            print('R ', end = '')
             return random.choice(self.actions)
         else:
-            print(' Q ', end = '')
+            print('Q ', end = '')
             return self.actions[np.argmax(self.q_table[state])]
 
     def update_q_table(self, state, action, reward, next_state):
@@ -49,7 +57,7 @@ class QLearner:
             data = pickle.load(f)
             self.q_table = data['q_table']
             self.epsilon = data['epsilon']
-        print(f'Loaded file {filename}. ')
+        print(f'Loaded file {filename}. Epsilon = {self.epsilon}')
 
 def train(num_episodes, n, m, worldid, model_file=None):
     q_learner = QLearner(n, m)
@@ -75,7 +83,7 @@ def train(num_episodes, n, m, worldid, model_file=None):
         while 1:
             action = q_learner.choose_action(state)
             try:
-                print(f'Episode {episode} Move {num_steps}: ', end = '')
+                print(f'E {episode} M {num_steps}: ', end = '')
                 _, _, reward, scoreIncrement, next_state = make_move(worldid, action)
             except Exception as e:
                 print(f"Terminal state reached in episode {episode}: {e}\nSteps: {num_steps}\nTotal reward: {total_reward}\nEpsilon: {q_learner.epsilon}")
@@ -85,10 +93,26 @@ def train(num_episodes, n, m, worldid, model_file=None):
                 q_learner.save(model_file)
                 break
 
+
             q_learner.update_q_table(state, action, reward, next_state)
             state = next_state
             total_reward += reward
             num_steps += 1
+            if num_steps % 50 == 0:
+                print(f'Epsilon = {q_learner.epsilon}')
+                q_learner.save(model_file)
+            time.sleep(0.1)
+
+            if num_steps>5000:
+                _,state = get_location()
+                if state:
+                    print(f"Terminal state reached in episode {episode}: \nSteps: {num_steps}\nTotal reward: {total_reward}\nEpsilon: {q_learner.epsilon}")
+                    avg_reward = total_reward / num_steps
+                    print(f'Episode {episode + 1}: Average reward = {avg_reward}, Epsilon = {q_learner.epsilon}')
+                    q_learner.update_epsilon()
+                    q_learner.save(model_file)
+                    reset()
+                    break
 
 
 
@@ -178,7 +202,7 @@ def enter_world(worldid, time_ = None):
     else:
         raise Exception(f'ERROR: failed to enter world {worldid}. \nresponse: {response.text}')
 
-def make_move(worldid, move):
+def make_move(worldid, move, retry = 0):
     payload={'type': 'move',
         'move': move,
         'teamId': my_teamid,
@@ -189,7 +213,13 @@ def make_move(worldid, move):
         response.raise_for_status()
     except requests.exceptions.Timeout:
         print("Request timed out.")
-        exit(1)
+        if retry < 6:
+            time.sleep(1)
+            print(f'Retry: {retry}')
+            return make_move(worldid, move, retry = retry+1)
+        else:
+            print('Retry too much times, exiting...')
+            exit(1)
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")
         exit(1)
@@ -285,7 +315,7 @@ def main():
     # print(type(world), type(state))
     # print(world,state)
 
-    world = 1
+    world = 10
 
     
     model_file = f'./q_data/q_table{world}.pkl'
