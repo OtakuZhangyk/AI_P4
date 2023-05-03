@@ -35,7 +35,10 @@ class QLearner:
             return random.choice(self.actions)
         else:
             print('Q ', end = '')
-            return self.actions[np.argmax(self.q_table[state])]
+            action_values = self.q_table[state]
+            max_value = np.max(action_values)
+            actions_with_max_value = np.where(action_values == max_value)[0]
+            return self.actions[np.random.choice(actions_with_max_value)]
 
     def update_q_table(self, state, action, reward, next_state):
         current_q = self.q_table[state + (self.actions.index(action),)]
@@ -46,11 +49,17 @@ class QLearner:
     def update_epsilon(self):
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
-    def save(self, filename):
+    def save(self, filename, end = 0):
         data = {'q_table': self.q_table, 'epsilon': self.epsilon}
         with open(filename, 'wb') as f:
             pickle.dump(data, f)
         print(f'Saved file {filename}. ')
+        if end:
+            # Also save a text copy of the Q-table for inspection
+            with open('qlearner_model_log.txt', 'w') as f:
+                for table_2d in self.q_table:
+                    np.savetxt(f, table_2d)
+            print(f'Saved file qlearner_model_log.txt. ')
 
     def load(self, filename):
         with open(filename, 'rb') as f:
@@ -90,7 +99,7 @@ def train(num_episodes, n, m, worldid, model_file=None):
                 avg_reward = total_reward / num_steps
                 print(f'Episode {episode + 1}: Average reward = {avg_reward}, Epsilon = {q_learner.epsilon}')
                 q_learner.update_epsilon()
-                q_learner.save(model_file)
+                q_learner.save(model_file, end = 1)
                 break
 
 
@@ -110,7 +119,7 @@ def train(num_episodes, n, m, worldid, model_file=None):
                     avg_reward = total_reward / num_steps
                     print(f'Episode {episode + 1}: Average reward = {avg_reward}, Epsilon = {q_learner.epsilon}')
                     q_learner.update_epsilon()
-                    q_learner.save(model_file)
+                    q_learner.save(model_file, end = 1)
                     reset()
                     break
 
@@ -315,7 +324,7 @@ def main():
     # print(type(world), type(state))
     # print(world,state)
 
-    world = 10
+    world = 4
 
     
     model_file = f'./q_data/q_table{world}.pkl'
