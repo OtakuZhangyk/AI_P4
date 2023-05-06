@@ -6,9 +6,6 @@ import time
 import pickle
 import datetime
 
-# world: 40*40
-# limit: step limit, or rewards all taken
-
 class QLearner:
     def __init__(self, n, m, alpha=0.5, gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.95):
         self.actions = ['N', 'S', 'E', 'W']
@@ -31,10 +28,12 @@ class QLearner:
 
         print(f'[{date_string}]', end = '')
         if random.uniform(0, 1) < self.epsilon:
+            # move randomly
             print('R ', end = '')
             return random.choice(self.actions)
         else:
             print('Q ', end = '')
+            # if more than one action have highest q value, choose from them randomly
             action_values = self.q_table[state]
             max_value = np.max(action_values)
             actions_with_max_value = np.where(action_values == max_value)[0]
@@ -46,9 +45,11 @@ class QLearner:
         new_q = current_q + self.alpha * (reward + self.gamma * max_next_q - current_q)
         self.q_table[state + (self.actions.index(action),)] = new_q
 
+    # drop exploration rate every epoch
     def update_epsilon(self):
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
+    # save q table and epsilon
     def save(self, filename, end = 0):
         data = {'q_table': self.q_table, 'epsilon': self.epsilon}
         with open(filename, 'wb') as f:
@@ -61,6 +62,7 @@ class QLearner:
                     np.savetxt(f, table_2d)
             print(f'Saved file qlearner_model_log.txt. ')
 
+    # load q table and epsilon
     def load(self, filename):
         with open(filename, 'rb') as f:
             data = pickle.load(f)
@@ -69,9 +71,11 @@ class QLearner:
         print(f'Loaded file {filename}. Epsilon = {self.epsilon}')
 
 def train(num_episodes, n, m, worldid, model_file=None):
+    # build QLearner obj
     q_learner = QLearner(n, m)
     last_call_time = None
 
+    # load or create new q table and epsilon
     if model_file:
         try:
             q_learner.load(model_file)
@@ -80,7 +84,9 @@ def train(num_episodes, n, m, worldid, model_file=None):
     else:
         model_file=f'./q_data/q_table{worldid}.pkl'
 
+    # iterate epoch
     for episode in range(num_episodes):
+        # check if bot is in a world
         _,state = get_location()
         if not state:
             _, _, state, last_call_time = enter_world(worldid, last_call_time)
@@ -89,8 +95,11 @@ def train(num_episodes, n, m, worldid, model_file=None):
         num_steps = 0
         #collected_rewards = 0
 
+        # iterate steps
         while 1:
+            # choose action
             action = q_learner.choose_action(state)
+            # commit action to remote end, if Exception, exploration is ended
             try:
                 print(f'E {episode} M {num_steps}: ', end = '')
                 _, _, reward, scoreIncrement, next_state = make_move(worldid, action)
@@ -99,19 +108,22 @@ def train(num_episodes, n, m, worldid, model_file=None):
                 avg_reward = total_reward / num_steps
                 print(f'Episode {episode + 1}: Average reward = {avg_reward}, Epsilon = {q_learner.epsilon}')
                 q_learner.update_epsilon()
+                # save on exit
                 q_learner.save(model_file, end = 1)
                 break
 
-
+            # update q table based on the returned reward
             q_learner.update_q_table(state, action, reward, next_state)
             state = next_state
             total_reward += reward
             num_steps += 1
+            # save every 50 steps
             if num_steps % 50 == 0:
                 print(f'Epsilon = {q_learner.epsilon}')
                 q_learner.save(model_file)
             time.sleep(0.1)
 
+            # force reset when num of steps get too large
             if num_steps>5000:
                 _,state = get_location()
                 if state:
@@ -125,7 +137,7 @@ def train(num_episodes, n, m, worldid, model_file=None):
 
 
 
-################# APIs below ################
+################# API calls below ################
 
 def get_location():
     tail = f'?type=location&teamId={my_teamid}'
@@ -286,9 +298,11 @@ def reset():
         print(f'Reset team {team_id} successfully. ')
     else:
         raise Exception(f'ERROR: failed to reset team {my_teamid}. \nresponse: {response.text}')
+################# API calls above ################
+
 
 def main():
-    # personal key and id
+    # load personal key and id from config.txt
     try:
         with open('config.txt', 'r') as f:
             api_key = f.readline().strip()
@@ -324,7 +338,7 @@ def main():
     # print(type(world), type(state))
     # print(world,state)
 
-    world = 4
+    world = 6
 
     
     model_file = f'./q_data/q_table{world}.pkl'
